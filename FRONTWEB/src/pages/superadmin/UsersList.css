@@ -1,0 +1,296 @@
+/* =========================
+   BASE / THEME
+========================= */
+.users-list{
+  font-family: serif;
+  color: #111827;
+  padding: 18px;
+  background: #ffffff;
+}
+
+/* =========================
+   HEADER
+========================= */
+.page-header{
+  margin-bottom: 18px;
+}
+
+.page-header h1{
+  margin: 0 0 4px;
+  font-size: 30px;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.page-header p{
+  margin: 0;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+/* =========================
+   ACTIONS BAR
+========================= */
+.actions-bar{
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.btn{
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all .15s ease;
+}
+
+.btn-primary{
+  background: #50589C;
+  color: #fff;
+}
+
+.btn-primary:hover{
+  background: #434aa0;
+}
+
+.btn-secondary{
+  background: #f6f7fb;
+  border: 1px solid #e7e9f2;
+  color: #111827;
+}
+
+.btn-secondary:hover{
+  background: #eef0ff;
+}
+
+/* =========================
+   FEEDBACK
+========================= */
+.success-message,
+.error-message{
+  padding: 12px 14px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.success-message{
+  background: #e9f9ee;
+  border: 1px solid #c9f1d8;
+  color: #166534;
+}
+
+.error-message{
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #9f1239;
+}
+
+/* =========================
+   CARD TABLE
+========================= */
+.card{
+  background: #ffffff;
+  border: 1px solid #e7e9f2;
+  border-radius: 14px;
+  box-shadow: 0 6px 16px rgba(17,24,39,0.06);
+  overflow-x: auto;
+}
+
+/* =========================
+   TABLE
+========================= */
+.table{
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 980px;
+}
+
+.table thead th{
+  background: #f5f6ff;
+  padding: 14px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 900;
+  border-bottom: 1px solid #eceef8;
+}
+
+.table tbody td{
+  padding: 14px;
+  font-size: 13px;
+  border-top: 1px solid #f1f2f6;
+  vertical-align: middle;
+}
+
+.table tbody tr:hover{
+  background: #fafbff;
+}
+
+/* =========================
+   BADGES ROLE
+========================= */
+.badge{
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid transparent;
+}
+
+/* rôles */
+.badge-user{
+  background: #eef0ff;
+  color: #1d4ed8;
+  border-color: #dbe5ff;
+}
+
+.badge-admin{
+  background: #fff5e6;
+  color: #92400e;
+  border-color: #f4dfb4;
+}
+
+.badge-super_admin{
+  background: #f3e8ff;
+  color: #6b21a8;
+  border-color: #e9d5ff;
+}
+
+/* =========================
+   ACTIONS
+========================= */
+.actions{
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-edit{
+  background: #eef0ff;
+  border: 1px solid #dbe5ff;
+  color: #1d4ed8;
+}
+
+.btn-edit:hover{
+  background: #e0e7ff;
+}
+
+.btn-delete{
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #9f1239;
+}
+
+.btn-delete:hover{
+  background: #fee2e2;
+}
+
+/* =========================
+   LOADING
+========================= */
+.loading{
+  padding: 40px;
+  text-align: center;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+@media (max-width: 768px){
+  .page-header h1{
+    font-size: 24px;
+  }
+
+  .actions-bar{
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn{
+    width: 100%;
+  }
+}
+.filters-row{
+  display:flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.search-input,
+.role-select{
+  font-family: serif;
+  border: 1px solid #e7e9f2;
+  border-radius: 12px;
+  padding: 10px 12px;
+  outline: none;
+  background: #fff;
+}
+
+.search-input{
+  flex: 1;
+  min-width: 260px;
+}
+
+.search-input:focus,
+.role-select:focus{
+  border-color: rgba(80,88,156,0.35);
+  box-shadow: 0 0 0 4px rgba(80,88,156,0.12);
+}
+
+.user-cell{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+}
+
+.user-initials{
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display:grid;
+  place-items:center;
+  font-weight: 900;
+  background: rgba(80,88,156,0.12);
+  color: #50589C;
+  border: 1px solid rgba(80,88,156,0.18);
+}
+
+.user-meta{
+  display:flex;
+  flex-direction:column;
+  gap: 2px;
+}
+
+.user-fullname{
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.user-subrole{
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.muted{
+  color: #6b7280;
+}
+
+.empty-state{
+  padding: 30px;
+  text-align: center;
+  color: #6b7280;
+}
+
+.empty-icon{
+  font-size: 28px;
+  margin-bottom: 8px;
+}

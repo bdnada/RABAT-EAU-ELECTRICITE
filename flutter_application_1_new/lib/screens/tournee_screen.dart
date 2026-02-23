@@ -1,0 +1,1074 @@
+// ========================= tournee_screen.dart (COMPLET + CORRIGÉ) =========================
+// ✅ Ne change pas ton design
+// ✅ Adresse affichée complète (adresse + quartier + ville)  ✅✅✅ AMÉLIORÉ (2 LIGNES)
+// ✅ Distance restante fonctionne même si latitude/longitude = 0
+//    -> on récupère les coordonnées via GEOCODING (à partir du texte de l’adresse)
+// ✅ Itinéraire ouvre Google Maps (GPS si dispo, sinon recherche texte)
+// ✅ 3 points sur chaque adresse -> popup (Itinéraire / Distance restante)
+
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:iconsax/iconsax.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../services/api_service.dart';
+import '../models/adresse.dart';
+
+import 'login_screen.dart';
+import 'compteurs_screen.dart';
+import 'chat_screen.dart';
+import 'change_password_screen.dart';
+import 'releves_traitees_screen.dart';
+import 'statistiques_screen.dart';
+
+enum SortMode { proximity, remainingTasks, alphabetical }
+
+class TourneeScreen extends StatefulWidget {
+  const TourneeScreen({Key? key}) : super(key: key);
+
+  @override
+  State<TourneeScreen> createState() => _TourneeScreenState();
+}
+
+class _TourneeScreenState extends State<TourneeScreen> {
+  final ApiService apiService = ApiService();
+
+  List<Adresse> tourneeData = [];
+  List<Adresse> filteredData = [];
+  List<Map<String, dynamic>> allCompteurs = [];
+
+  Timer? _refreshTimer;
+
+  String agentNom = "Agent Terrain";
+  String agentQuartier = "—";
+
+  bool isDarkMode = false;
+  bool loadingStats = true;
+  int unreadMessages = 0;
+
+  Position? _currentPosition;
+  Timer? _sendLocationTimer;
+
+  SortMode _currentSort = SortMode.alphabetical;
+  bool showCompteurs = false;
+
+  int releves = 0, restants = 0, eau = 0, electricite = 0;
+
+  final TextEditingController _searchController = TextEditingController();
+
+  // ✅ Cache coords quand backend n’a pas coords (lat/lon = 0)
+  final Map<int, LatLng> _coordsCache = {};
+  final Map<int, bool> _coordsLookupInProgress = {};
+
+  // ===== THEME =====
+  Color get primary => isDarkMode ? const Color(0xFF93C5FD) : const Color(0xFF2563EB);
+  Color get bg => isDarkMode ? const Color(0xFF0B1220) : const Color(0xFFF6F7FB);
+  Color get surface => isDarkMode ? const Color(0xFF0F172A) : Colors.white;
+  Color get border => isDarkMode ? Colors.white10 : Colors.black.withOpacity(0.06);
+  Color get text => isDarkMode ? Colors.white : const Color(0xFF0F172A);
+  Color get subText => isDarkMode ? Colors.white70 : const Color(0xFF64748B);
+
+  TextStyle get titleStyle => GoogleFonts.poppins(
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        color: text,
+      );
+
+  TextStyle get smallStyle => GoogleFonts.poppins(
+        fontSize: 12,
+        fontWeight: FontWeight.w500,
+        color: subText,
+      );
+
+  TextStyle get itemTitle => GoogleFonts.poppins(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: text,
+      );
+
+  TextStyle get itemSub => GoogleFonts.poppins(
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
+        color: subText,
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    _initData();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) => _autoRefresh());
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _sendLocationTimer?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initData() async {
+    await loadTheme();
+    await loadAgentProfile();
+
+    await _ensureLocationReady();
+    await _autoRefresh();
+  }
+
+  Future<void> _autoRefresh() async {
+    await fetchUnread();
+    await chargerStats();
+    await loadTournee();
+    await loadAgentProfile();
+  }
+
+  // ==================== THEME ====================
+  Future<void> loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => isDarkMode = prefs.getBool('dark_mode') ?? false);
+  }
+
+  Future<void> toggleTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => isDarkMode = !isDarkMode);
+    await prefs.setBool('dark_mode', isDarkMode);
+  }
+
+  // ==================== AGENT PROFILE ====================
+  Future<void> loadAgentProfile() async {
+    try {
+      await apiService.cacheAgentProfileIfAny();
+      final name = await apiService.getCachedAgentName();
+      final q = await apiService.getCachedAgentQuartier();
+
+      if (!mounted) return;
+      setState(() {
+        agentNom = (name == null || name.trim().isEmpty) ? "Agent Terrain" : name.trim();
+        agentQuartier = (q == null || q.trim().isEmpty) ? "—" : q.trim();
+      });
+    } catch (_) {}
+  }
+
+  // ==================== GPS + TIMER 5s ====================
+  Future<void> _ensureLocationReady() async {
+    final enabled = await Geolocator.isLocationServiceEnabled();
+    if (!enabled) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Activez le GPS (Localisation).")),
+        );
+      }
+      return;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Permission localisation bloquée. Activez-la dans les paramètres."),
+          ),
+        );
+      }
+      await Geolocator.openAppSettings();
+      return;
+    }
+
+    if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+      await _sendLocationOnce();
+      _startSendLocationEvery5s();
+    }
+  }
+
+  Future<void> _sendLocationOnce() async {
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+
+      _currentPosition = pos;
+
+      await apiService.sendMyLocation(pos.latitude, pos.longitude);
+
+      if (mounted && _currentSort == SortMode.proximity) {
+        _applySort();
+      }
+    } catch (_) {}
+  }
+
+  void _startSendLocationEvery5s() {
+    _sendLocationTimer?.cancel();
+
+    _sendLocationTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      try {
+        final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 10),
+        );
+
+        _currentPosition = pos;
+
+        await apiService.sendMyLocation(pos.latitude, pos.longitude);
+
+        if (mounted && _currentSort == SortMode.proximity) {
+          _applySort();
+        }
+      } catch (_) {}
+    });
+  }
+
+  Future<Position?> _tryGetCurrentPositionQuick() async {
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 6),
+      );
+      _currentPosition = pos;
+      return pos;
+    } catch (_) {
+      return _currentPosition;
+    }
+  }
+
+  // ==================== ✅ COORDONNÉES ADRESSE (robuste) ====================
+  // Si backend ne donne pas lat/lon -> on calcule via geocoding (1 fois) et on cache.
+  String _fullAddressText(Adresse a) {
+    final parts = <String>[];
+    final adr = a.adresseComplete.trim();
+    final q = a.quartier.trim();
+    final v = a.ville.trim();
+
+    if (adr.isNotEmpty) parts.add(adr);
+    if (q.isNotEmpty) parts.add(q);
+    if (v.isNotEmpty) parts.add(v);
+
+    return parts.join(", ");
+  }
+
+  // ✅ (NOUVEAU) Texte séparé pour affichage propre (2 lignes)
+  String _quartierVille(Adresse a) {
+    final q = a.quartier.trim();
+    final v = a.ville.trim();
+    if (q.isEmpty && v.isEmpty) return "—";
+    if (q.isEmpty) return v;
+    if (v.isEmpty) return q;
+    return "$q • $v";
+  }
+
+  Future<LatLng?> _ensureAdresseCoords(Adresse a) async {
+    if (a.latitude != 0.0 && a.longitude != 0.0) {
+      return LatLng(a.latitude, a.longitude);
+    }
+
+    final cached = _coordsCache[a.id];
+    if (cached != null) return cached;
+
+    if (_coordsLookupInProgress[a.id] == true) return null;
+    _coordsLookupInProgress[a.id] = true;
+
+    try {
+      final query = _fullAddressText(a);
+      if (query.trim().isEmpty) return null;
+
+      final locations = await locationFromAddress(query);
+      if (locations.isEmpty) return null;
+
+      final loc = locations.first;
+      final ll = LatLng(loc.latitude, loc.longitude);
+      _coordsCache[a.id] = ll;
+      return ll;
+    } catch (_) {
+      return null;
+    } finally {
+      _coordsLookupInProgress[a.id] = false;
+    }
+  }
+
+  // ==================== DISTANCE / MAPS ====================
+  String _formatDistance(double meters) {
+    if (meters < 1000) return "${meters.toStringAsFixed(0)} m";
+    return "${(meters / 1000).toStringAsFixed(2)} km";
+  }
+
+  Future<void> _showDistancePopup(Adresse a) async {
+    final pos = await _tryGetCurrentPositionQuick();
+    if (pos == null) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("🧭 Distance restante"),
+          content: const Text("Position actuelle indisponible. Activez le GPS."),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))],
+        ),
+      );
+      return;
+    }
+
+    final coords = await _ensureAdresseCoords(a);
+    if (coords == null) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("🧭 Distance restante"),
+          content: const Text("Impossible de récupérer les coordonnées de cette adresse."),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))],
+        ),
+      );
+      return;
+    }
+
+    final meters = Geolocator.distanceBetween(
+      pos.latitude,
+      pos.longitude,
+      coords.lat,
+      coords.lon,
+    );
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("🧭 Distance restante"),
+        content: Text(_formatDistance(meters)),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))],
+      ),
+    );
+  }
+
+  Future<void> _openRouteToAdresse(Adresse a) async {
+    Uri uri;
+
+    final pos = await _tryGetCurrentPositionQuick();
+    final coords = await _ensureAdresseCoords(a);
+
+    if (coords != null) {
+      if (pos != null) {
+        uri = Uri.parse(
+          "https://www.google.com/maps/dir/?api=1"
+          "&origin=${pos.latitude},${pos.longitude}"
+          "&destination=${coords.lat},${coords.lon}"
+          "&travelmode=driving",
+        );
+      } else {
+        uri = Uri.parse("https://www.google.com/maps/search/?api=1&query=${coords.lat},${coords.lon}");
+      }
+    } else {
+      final query = Uri.encodeComponent(_fullAddressText(a));
+      uri = Uri.parse("https://www.google.com/maps/search/?api=1&query=$query");
+    }
+
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Impossible d’ouvrir Google Maps.")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erreur Maps: $e")));
+      }
+    }
+  }
+
+  // ==================== MENU 3 POINTS ====================
+  void _showAdresseMenu(Adresse a) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.35),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Iconsax.routing),
+                title: Text("Itinéraire", style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
+                subtitle: Text("Ouvrir Google Maps", style: GoogleFonts.poppins(fontSize: 12)),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _openRouteToAdresse(a);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Iconsax.gps),
+                title: Text("🧭 Distance restante", style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
+                subtitle: Text("Afficher la distance", style: GoogleFonts.poppins(fontSize: 12)),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _showDistancePopup(a);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ==================== SORT + SEARCH ====================
+  void _applySort() {
+    setState(() {
+      if (_currentSort == SortMode.proximity && _currentPosition != null) {
+        filteredData.sort((a, b) {
+          final distA = Geolocator.distanceBetween(
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+            a.latitude,
+            a.longitude,
+          );
+          final distB = Geolocator.distanceBetween(
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+            b.latitude,
+            b.longitude,
+          );
+          return distA.compareTo(distB);
+        });
+      } else if (_currentSort == SortMode.remainingTasks) {
+        filteredData.sort((a, b) => b.nbCompteursRestants.compareTo(a.nbCompteursRestants));
+      } else {
+        filteredData.sort((a, b) => a.adresseComplete.compareTo(b.adresseComplete));
+      }
+    });
+  }
+
+  void _filterSearch(String query) {
+    setState(() {
+      filteredData = tourneeData
+          .where((a) => _fullAddressText(a).toLowerCase().contains(query.toLowerCase()))
+          .toList();
+      _applySort();
+    });
+  }
+
+  // ==================== UNREAD ====================
+  Future<void> fetchUnread() async {
+    try {
+      final count = await apiService.getUnreadCount();
+      if (!mounted) return;
+      setState(() => unreadMessages = count);
+    } catch (_) {}
+  }
+
+  // ==================== LISTE TOURNEE ====================
+  Future<void> loadTournee() async {
+    try {
+      final data = await apiService.getTournee();
+      final temp = data.map((e) => Adresse.fromJson(e)).toList();
+
+      allCompteurs.clear();
+
+      for (final a in temp) {
+        final compteurs = await apiService.getCompteurs(a.id);
+
+        a.nbCompteursRestants =
+            compteurs.where((c) => c['indexActuel'] == null || c['indexActuel'] <= 0).length;
+
+        for (final c in compteurs) {
+          allCompteurs.add({
+            'adresseId': a.id,
+            'adresse': a.adresseComplete,
+            'quartier': a.quartier,
+            'id': c['id'],
+            'numeroCompteur': c['numeroCompteur']?.toString() ?? '',
+            'type': c['type'],
+            'indexActuel': c['indexActuel'] ?? 0,
+            'reste': c['indexActuel'] == null || c['indexActuel'] <= 0,
+          });
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        tourneeData = temp;
+        if (_searchController.text.isEmpty) {
+          filteredData = List<Adresse>.from(tourneeData);
+          _applySort();
+        } else {
+          _filterSearch(_searchController.text);
+        }
+      });
+    } catch (_) {}
+  }
+
+  // ==================== KPI ====================
+  Future<void> chargerStats() async {
+    try {
+      final tournee = await apiService.getTournee();
+      int r = 0;
+      int e = 0, el = 0;
+
+      for (final a in tournee) {
+        final compteurs = await apiService.getCompteurs(a['id']);
+        for (final c in compteurs) {
+          final type = c['type'].toString().toUpperCase();
+          if (type.contains('EAU')) e++;
+          if (type.contains('ELECT')) el++;
+
+          final idx = c['indexActuel'];
+          final isRestant = (idx == null) || (idx is num && idx <= 0);
+          if (isRestant) r++;
+        }
+      }
+
+      final List<Adresse> traitees = await apiService.getTourneeTraitees();
+      int v = 0;
+
+      for (final adr in traitees) {
+        final compteurs = await apiService.getCompteurs(adr.id);
+        for (final c in compteurs) {
+          final idx = c['indexActuel'];
+          final isValide = (idx != null) && (idx is num && idx > 0);
+          if (isValide) v++;
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        restants = r;
+        releves = v;
+        eau = e;
+        electricite = el;
+        loadingStats = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => loadingStats = false);
+    }
+  }
+
+  // ==================== LOGOUT ====================
+  Future<void> logout() async {
+    await apiService.logout();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
+  }
+
+  // ==================== UI ====================
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: bg,
+      drawer: _buildDrawer(),
+      appBar: _buildSimpleAppBar(),
+      body: RefreshIndicator(
+        onRefresh: _autoRefresh,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+          children: [
+            _kpisRow(),
+            const SizedBox(height: 12),
+            _searchBar(),
+            const SizedBox(height: 12),
+            _segmentedToggle(),
+            const SizedBox(height: 10),
+            _listContent(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildSimpleAppBar() {
+    return AppBar(
+      elevation: 0.5,
+      backgroundColor: surface,
+      surfaceTintColor: surface,
+      iconTheme: IconThemeData(color: text),
+      titleSpacing: 0,
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Ma tournée", style: titleStyle),
+          Text("$agentNom • $agentQuartier", style: smallStyle),
+        ],
+      ),
+      actions: [
+        IconButton(
+          tooltip: "Trier",
+          onPressed: _showSortDialog,
+          icon: Icon(Iconsax.sort, color: text),
+        ),
+        IconButton(
+          tooltip: "Actualiser",
+          onPressed: _autoRefresh,
+          icon: Icon(Iconsax.refresh, color: text),
+        ),
+        const SizedBox(width: 4),
+      ],
+    );
+  }
+
+  Widget _kpisRow() {
+    if (loadingStats) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: const LinearProgressIndicator(minHeight: 6),
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(child: _kpiCard(icon: Iconsax.tick_circle, label: "Relevés", value: "$releves")),
+        const SizedBox(width: 10),
+        Expanded(child: _kpiCard(icon: Iconsax.timer_1, label: "Restants", value: "$restants")),
+        const SizedBox(width: 10),
+      ],
+    );
+  }
+
+  Widget _kpiCard({required IconData icon, required String label, required String value}) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: primary.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: primary, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(value, style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w800, color: text)),
+                Text(label, style: itemSub, maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _segmentedToggle() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _segButton(
+              selected: !showCompteurs,
+              icon: Iconsax.location,
+              label: "Adresses",
+              onTap: () => setState(() => showCompteurs = false),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: _segButton(
+              selected: showCompteurs,
+              icon: Iconsax.flash_1,
+              label: "Compteurs",
+              onTap: () => setState(() => showCompteurs = true),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _segButton({
+    required bool selected,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? primary.withOpacity(0.12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 18, color: selected ? primary : subText),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: selected ? primary : subText),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅✅✅ SEUL CHANGEMENT ICI : on affiche l’adresse en 2 lignes (très clair)
+  Widget _simpleTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String badgeText,
+    required Color badgeColor,
+    required VoidCallback onTap,
+    VoidCallback? onMore,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: primary.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: primary, size: 20),
+        ),
+        title: Text(
+          title,
+          style: itemTitle,
+          maxLines: 3, // ✅ plus clair
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            subtitle,
+            style: itemSub,
+            maxLines: 2, // ✅ plus clair
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: badgeColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: badgeColor.withOpacity(0.25)),
+              ),
+              child: Text(
+                badgeText,
+                style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w700, color: badgeColor),
+              ),
+            ),
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: onMore,
+              borderRadius: BorderRadius.circular(999),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Icon(Iconsax.more, size: 18, color: subText),
+              ),
+            ),
+          ],
+        ),
+        onTap: onTap,
+      ),
+    );
+  }
+
+  // ==================== LISTE UI ====================
+  Widget _listContent() {
+    if (loadingStats) return const SizedBox();
+
+    if (showCompteurs) {
+      return ListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: allCompteurs.length,
+        itemBuilder: (context, i) {
+          final c = allCompteurs[i];
+          final reste = c['reste'] == true;
+
+          final numero = (c['numeroCompteur']?.toString().trim().isNotEmpty ?? false)
+              ? c['numeroCompteur'].toString()
+              : "—";
+
+          return _simpleTile(
+            icon: Iconsax.flash_1,
+            title: "Compteur $numero • ${c['type']}",
+            subtitle: c['adresse'].toString(),
+            badgeText: reste ? "Non relevé" : "Relevé",
+            badgeColor: reste ? const Color(0xFFF59E0B) : const Color(0xFF22C55E),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CompteursScreen(
+                  adresseId: c['adresseId'],
+                  adresseNom: c['adresse'],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: filteredData.length,
+      itemBuilder: (context, i) {
+        final a = filteredData[i];
+        final badgeColor =
+            a.nbCompteursRestants > 0 ? const Color(0xFFF59E0B) : const Color(0xFF22C55E);
+
+        // ✅ LIGNE 1 = adresseComplete, LIGNE 2 = quartier • ville
+        return _simpleTile(
+          icon: Iconsax.location,
+          title: a.adresseComplete.trim().isEmpty ? "Adresse (inconnue)" : a.adresseComplete.trim(),
+          subtitle: _quartierVille(a),
+          badgeText: "${a.nbCompteursRestants} restants",
+          badgeColor: badgeColor,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CompteursScreen(
+                adresseId: a.id,
+                adresseNom: a.adresseComplete,
+              ),
+            ),
+          ),
+          onMore: () => _showAdresseMenu(a),
+        );
+      },
+    );
+  }
+
+  // ===== Drawer, search, sort, etc. restent inchangés dans ton code original =====
+  // (Je les garde tels quels, tu peux recoller la suite inchangée)
+
+  Widget _searchBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border),
+      ),
+      child: TextField(
+        controller: _searchController,
+        onChanged: _filterSearch,
+        style: GoogleFonts.poppins(color: text, fontSize: 13),
+        decoration: InputDecoration(
+          prefixIcon: Icon(Iconsax.search_normal, color: subText),
+          hintText: "Rechercher une rue ou quartier…",
+          hintStyle: GoogleFonts.poppins(color: subText),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        ),
+      ),
+    );
+  }
+
+  // ===== Drawer =====
+  Widget _buildDrawer() {
+    return Drawer(
+      backgroundColor: bg,
+      child: Column(
+        children: [
+          DrawerHeader(
+            decoration: BoxDecoration(
+              color: surface,
+              border: Border(bottom: BorderSide(color: border)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(Iconsax.profile_circle, color: primary, size: 30),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        agentNom,
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: text),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        "Quartier : $agentQuartier",
+                        style: GoogleFonts.poppins(color: subText, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                )
+              ],
+            ),
+          ),
+          _drawerTile(Iconsax.message, "Messagerie", () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen()));
+          }, badge: unreadMessages),
+          _drawerTile(Iconsax.document_text, "Relevés traités", () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const RelevesTraiteesScreen()));
+          }),
+          _drawerTile(Iconsax.chart_2, "Statistiques", () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const StatistiquesScreen()));
+          }),
+          const Divider(height: 18),
+          _drawerTile(Iconsax.lock_1, "Mot de passe", () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const ChangePasswordScreen()));
+          }),
+          SwitchListTile(
+            secondary: Icon(isDarkMode ? Iconsax.moon : Iconsax.sun_1, color: primary),
+            title: Text(
+              "Mode sombre",
+              style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: text),
+            ),
+            value: isDarkMode,
+            onChanged: (_) => toggleTheme(),
+          ),
+          const Spacer(),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFEF4444),
+                  side: BorderSide(color: const Color(0xFFEF4444).withOpacity(0.5)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: logout,
+                icon: const Icon(Iconsax.logout_1),
+                label: Text("Déconnexion", style: GoogleFonts.poppins(fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _drawerTile(IconData icon, String title, VoidCallback onTap, {int badge = 0}) {
+    return ListTile(
+      leading: Icon(icon, color: primary),
+      title: Text(title, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: text)),
+      trailing: badge > 0
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                "$badge",
+                style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w800, color: primary),
+              ),
+            )
+          : Icon(Iconsax.arrow_right_3, size: 16, color: subText),
+      onTap: onTap,
+    );
+  }
+
+  void _showSortDialog() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Iconsax.gps),
+              title: Text("Le plus proche (GPS)", style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+              onTap: () {
+                _currentSort = SortMode.proximity;
+                _applySort();
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Iconsax.task_square),
+              title: Text("Priorité compteurs restants", style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+              onTap: () {
+                _currentSort = SortMode.remainingTasks;
+                _applySort();
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Iconsax.textalign_left),
+              title: Text("Nom alphabétique", style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+              onTap: () {
+                _currentSort = SortMode.alphabetical;
+                _applySort();
+                Navigator.pop(context);
+              },
+            ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ✅ Petit type interne pour stocker coords
+class LatLng {
+  final double lat;
+  final double lon;
+  const LatLng(this.lat, this.lon);
+}

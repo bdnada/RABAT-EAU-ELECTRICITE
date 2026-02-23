@@ -1,0 +1,346 @@
+:root{
+  --bg:#ffffff;
+  --text:#111827;
+  --muted:#6b7280;
+
+  --accent:#50589C;
+  --line:#e7e9f2;
+  --soft:#f6f7fb;
+
+  --shadow:0 10px 25px rgba(17,24,39,.06);
+  --shadow2:0 6px 16px rgba(17,24,39,.06);
+
+  --r:14px;
+}
+
+/* =========================
+   PAGE
+========================= */
+.agentDetails{
+  font-family: serif;
+  background: var(--bg);
+  color: var(--text);
+  padding-bottom: 24px;
+}
+
+/* =========================
+   HEADER (style dashboard)
+========================= */
+.pageHeader{
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  padding: 18px 18px 12px;
+}
+
+.pageHeader h1{
+  margin: 0 0 4px;
+  font-size: 30px;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.pageHeader p{
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* =========================
+   CARD PRINCIPALE
+========================= */
+.card{
+  margin: 16px 18px;
+  background:#fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow2);
+  padding: 16px;
+}
+
+/* =========================
+   AGENT HEADER
+========================= */
+.agentHeader{
+  display:flex;
+  align-items:center;
+  gap: 14px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #f0f2f8;
+}
+
+.agentAvatar{
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display:grid;
+  place-items:center;
+
+  font-weight: 900;
+  letter-spacing: .5px;
+  color: #1f2a68;
+
+  background: rgba(80,88,156,.12);
+  border: 1px solid rgba(80,88,156,.20);
+}
+
+.agentHeaderInfo h2{
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 900;
+  color:#0f172a;
+}
+
+.agentHeaderInfo p{
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+/* =========================
+   INFO GRID
+========================= */
+.infoGrid{
+  display:grid;
+  grid-template-columns: repeat(3, minmax(240px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.infoCard{
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: 0 2px 10px rgba(17,24,39,.04);
+  padding: 14px;
+}
+
+.infoCard h4{
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: #374151;
+}
+
+.infoRow{
+  display:flex;
+  justify-content:space-between;
+  gap: 14px;
+  padding: 8px 0;
+  border-top: 1px solid #f2f3f8;
+}
+
+.infoRow:first-of-type{
+  border-top: none;
+  padding-top: 0;
+}
+
+.infoRow label{
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.infoRow span{
+  font-size: 13px;
+  font-weight: 900;
+  color: #0f172a;
+  text-align: right;
+}
+
+/* =========================
+   BADGES
+========================= */
+.badge{
+  display:inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid var(--line);
+  background:#fff;
+}
+
+.badgeSuccess{
+  background: #e9f9ee;
+  border-color: #c8f1d4;
+  color: #166534;
+}
+
+.badgeDanger{
+  background: #fff5f5;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+/* =========================
+   ACTIONS
+========================= */
+.actions{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #f0f2f8;
+}
+
+/* Buttons */
+.btn{
+  font-family: serif;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 900;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform .12s ease, background .15s ease, border-color .15s ease;
+}
+
+.btn:active{ transform: translateY(1px); }
+
+.btnPrimary{
+  background: rgba(80,88,156,.12);
+  border-color: rgba(80,88,156,.22);
+  color: #1f2a68;
+}
+
+.btnPrimary:hover{
+  background: rgba(80,88,156,.18);
+}
+
+.btnSecondary{
+  background: #fff;
+  border-color: var(--line);
+  color: #111827;
+}
+
+.btnSecondary:hover{
+  background: #fafbff;
+  border-color: rgba(80,88,156,.18);
+}
+
+.btnSuccess{
+  background: #e9f9ee;
+  border-color: #c8f1d4;
+  color: #166534;
+}
+
+.btnSuccess:hover{
+  background: #dcfce7;
+}
+
+.btnDanger{
+  background: #fff5f5;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.btnDanger:hover{
+  background: #fee2e2;
+}
+
+/* =========================
+   EDIT FORM (select + btn)
+========================= */
+.editForm{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+  flex-wrap: wrap;
+}
+
+.editForm select{
+  font-family: serif;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: #fff;
+  color: #111827;
+  outline: none;
+  min-width: 260px;
+  box-shadow: 0 2px 8px rgba(17,24,39,.04);
+}
+
+.editForm select:focus{
+  border-color: rgba(80,88,156,.35);
+  box-shadow: 0 0 0 4px rgba(80,88,156,.12);
+}
+
+/* =========================
+   POPUPS / MODALS
+========================= */
+.popupOverlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,.40);
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.popupContent{
+  width: min(520px, 96vw);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.popupContent h3{
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.popupContent p{
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.popupActions{
+  display:flex;
+  gap: 10px;
+  justify-content:flex-end;
+  flex-wrap: wrap;
+}
+
+/* =========================
+   ERROR / LOADING
+========================= */
+.loading{
+  padding: 18px;
+  display:grid;
+  place-items:center;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.errorMessage{
+  margin: 12px 18px 0;
+  background: #fff5f5;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-weight: 900;
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+@media (max-width: 1100px){
+  .infoGrid{
+    grid-template-columns: 1fr;
+  }
+}

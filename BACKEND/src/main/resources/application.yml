@@ -1,0 +1,53 @@
+server:
+  port: 8081
+
+
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/REE
+    username: openpg
+    password: openpgpwd     # change avec ton mot de passe
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update    # cr�e la table automatiquement
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: missouissal1@gmail.com
+    password: svpqmikbdlzgzusc
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.debug: true
+
+
+jwt:
+  secret: 8f7e6d5c4b3a2918271625141312111009080706050403020100965363563563536536
+  expiration: 100000000 # 1 minute
+
+
+odoo:
+  url: http://localhost:8069/jsonrpc
+  url2: http://localhost:8069
+  db: Gest_Compteur
+  uid: 2
+  password: openpgpwd
+  login: bdnada03@gmail.com
+  web-password: openpgpwd
+  product_eau_id: 43
+  product_redevance_eau_id: 44
+  product_assainissement_id: 45
+  product_redevance_assainissement_id: 46
+  product_elec_id: 47
+  product_redevance_elec_id: 48
+
+
+

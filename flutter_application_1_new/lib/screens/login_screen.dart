@@ -1,0 +1,481 @@
+// ========================= login_screen.dart =========================
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:iconsax/iconsax.dart';
+
+import '../services/api_service.dart';
+import 'tournee_screen.dart';
+import 'pin_login_screen.dart';
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({Key? key}) : super(key: key);
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final ApiService apiService = ApiService();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  bool _loading = false;
+  bool _obscurePassword = true;
+
+  // ✅ Palette pro (garde tes couleurs officielles)
+  final Color primary = const Color(0xFF27B0F5);
+  final Color secondary = const Color(0xFFA1A7AB);
+
+  @override
+  void initState() {
+    super.initState();
+    _setupFirebase();
+  }
+
+  void _setupFirebase() {
+    FirebaseMessaging.instance.requestPermission();
+    FirebaseMessaging.instance.getToken().then((token) {
+      debugPrint("FCM TOKEN: $token");
+    });
+  }
+
+  Future<void> _login() async {
+    final email = _emailController.text.trim();
+    final pass = _passwordController.text.trim();
+
+    if (email.isEmpty || pass.isEmpty) {
+      await _showProDialog(
+        title: "Champs requis",
+        message: "Veuillez remplir tous les champs.",
+        isError: true,
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      await apiService.login(email, pass);
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const TourneeScreen()),
+      );
+    } catch (_) {
+      await _showProDialog(
+        title: "Connexion échouée",
+        message: "Email ou mot de passe incorrect.",
+        isError: true,
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _showProDialog({
+    required String title,
+    required String message,
+    bool isError = true,
+    VoidCallback? onOk,
+  }) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 22),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x22000000),
+                  blurRadius: 22,
+                  offset: Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: isError ? const Color(0xFFFFF2F2) : const Color(0xFFF2FFF7),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    isError ? Iconsax.warning_2 : Iconsax.tick_circle,
+                    color: isError ? const Color(0xFFE53935) : const Color(0xFF2E7D32),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: GoogleFonts.poppins(
+                          fontSize: 14.3,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        message,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade700,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            if (onOk != null) onOk();
+                          },
+                          child: Text(
+                            "OK",
+                            style: GoogleFonts.poppins(
+                              color: primary,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      )
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      backgroundColor: const Color(0xFFF6F7FB),
+      body: Stack(
+        children: [
+          // ✅ Background soft (pro + simple)
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    primary.withOpacity(0.14),
+                    secondary.withOpacity(0.10),
+                    Colors.white,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+            ),
+          ),
+
+          // ✅ “Blob” léger (style premium)
+          Positioned(
+            top: -90,
+            right: -70,
+            child: Container(
+              width: 220,
+              height: 220,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primary.withOpacity(0.18),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -110,
+            left: -80,
+            child: Container(
+              width: 260,
+              height: 260,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: secondary.withOpacity(0.18),
+              ),
+            ),
+          ),
+
+          SafeArea(
+            child: CustomScrollView(
+              slivers: [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 10),
+
+                   // ✅ Header (logo + titre)
+Center(
+  child: Column(
+    children: [
+      // 🔽 Logo descendu légèrement
+      Padding(
+        padding: const EdgeInsets.only(top: 40), // 👈 ajuste ici (30–50)
+        child: Container(
+          width: 84,
+          height: 84,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: Image.asset(
+              'assets/logo.png',
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+      ),
+
+      const SizedBox(height: 70),
+
+      Text(
+        "Connexion",
+        style: GoogleFonts.poppins(
+          fontSize: 22,
+          fontWeight: FontWeight.w800,
+          color: const Color(0xFF0F172A),
+        ),
+      ),
+      const SizedBox(height: 4),
+      Text(
+        "Accédez à votre tournée en toute sécurité",
+        style: GoogleFonts.poppins(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w500,
+          color: const Color(0xFF64748B),
+        ),
+      ),
+    ],
+  ),
+),
+
+
+                        const SizedBox(height: 22),
+                        const Spacer(),
+
+                        // ✅ Card principale
+                        _buildCard(),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.black.withOpacity(0.06)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Email", style: _labelStyle()),
+          const SizedBox(height: 8),
+          _proField(
+            controller: _emailController,
+            hint: "exemple@ree.ma",
+            keyboardType: TextInputType.emailAddress,
+            prefixIcon: Iconsax.sms,
+          ),
+          const SizedBox(height: 14),
+          Text("Mot de passe", style: _labelStyle()),
+          const SizedBox(height: 8),
+          _proField(
+            controller: _passwordController,
+            hint: "••••••••",
+            keyboardType: TextInputType.visiblePassword,
+            obscure: _obscurePassword,
+            prefixIcon: Iconsax.lock_1,
+            suffix: IconButton(
+              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              icon: Icon(
+                _obscurePassword ? Iconsax.eye_slash : Iconsax.eye,
+                size: 20,
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          // ✅ bouton
+          _buildLoginButton(),
+
+          const SizedBox(height: 14),
+
+          Center(child: _buildPinLoginLink()),
+        ],
+      ),
+    );
+  }
+
+  TextStyle _labelStyle() {
+    return GoogleFonts.poppins(
+      fontSize: 12.5,
+      fontWeight: FontWeight.w700,
+      color: const Color(0xFF0F172A),
+    );
+  }
+
+  Widget _proField({
+    required TextEditingController controller,
+    required String hint,
+    required TextInputType keyboardType,
+    required IconData prefixIcon,
+    bool obscure = false,
+    Widget? suffix,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: TextField(
+        controller: controller,
+        obscureText: obscure,
+        keyboardType: keyboardType,
+        style: GoogleFonts.poppins(
+          color: const Color(0xFF0F172A),
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        decoration: InputDecoration(
+          prefixIcon: Icon(prefixIcon, color: primary, size: 20),
+          suffixIcon: suffix,
+          border: InputBorder.none,
+          hintText: hint,
+          hintStyle: GoogleFonts.poppins(
+            color: const Color(0xFF94A3B8),
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoginButton() {
+    if (_loading) {
+      return SizedBox(
+        height: 52,
+        child: Center(child: CircularProgressIndicator(color: primary)),
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton(
+        onPressed: _login,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        child: Text(
+          "Se connecter",
+          style: GoogleFonts.poppins(
+            fontSize: 14.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPinLoginLink() {
+    return GestureDetector(
+      onTap: () async {
+        final prefs = await SharedPreferences.getInstance();
+        final locked = prefs.getBool('pin_locked') ?? false;
+
+        if (locked) {
+          await _showProDialog(
+            title: "Accès PIN bloqué",
+            message: "Connectez-vous avec Login puis déconnectez-vous pour réactiver le PIN.",
+            isError: true,
+          );
+          return;
+        }
+
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const PinLoginScreen()),
+        );
+      },
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Iconsax.key, size: 18, color: primary),
+          const SizedBox(width: 8),
+          Text(
+            "Connexion avec PIN",
+            style: GoogleFonts.poppins(
+              color: const Color(0xFF0F172A),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Icon(Iconsax.arrow_right_3, size: 16, color: Colors.grey.shade600),
+        ],
+      ),
+    );
+  }
+}

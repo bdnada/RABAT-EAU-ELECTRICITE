@@ -1,0 +1,52 @@
+/* Conteneur principal */
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.header {
+  background-color: #50589C;
+  color: white;
+  padding: 16px;
+  border-bottom: 2px solid #000;
+}
+
+.header h1 {
+  font-weight: normal;
+}
+
+/* Contenu principal */
+.main {
+  flex: 1;
+  padding: 20px;
+}
+
+/* Cartes ou sections */
+.section {
+  border: 1px solid #000;
+  padding: 16px;
+  margin-bottom: 16px;
+  background-color: #ffffff;
+}
+
+/* Boutons dans l'app */
+.btn {
+  border: 1px solid #000;
+  background-color: #ffffff;
+  color: #000;
+  padding: 8px 14px;
+}
+
+.btn:hover {
+  background-color: #eaeaea;
+}
+
+/* Footer */
+.footer {
+  padding: 12px;
+  text-align: center;
+  border-top: 1px solid #000;
+  background-color: #f0f0f0;
+}

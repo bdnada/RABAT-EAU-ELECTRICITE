@@ -1,0 +1,69 @@
+/* =========================
+   Layout (Sidebar + Content)
+   ========================= */
+
+.layout{
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  background: var(--bg);
+}
+
+/* zone pages */
+.main-content{
+  min-width: 0;
+  padding: 15px;
+  
+  overflow: auto;
+}
+
+/* Optionnel: style par défaut des pages dans Outlet
+   (si tes pages ont un wrapper .page) */
+.page{
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.page-header{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.page-title{
+  margin: 0;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: .2px;
+}
+
+.page-subtitle{
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* cartes / sections (si tu veux un wrapper générique) */
+.section{
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 14px;
+}
+
+/* Layout responsive: sidebar devient drawer (ton Sidebar.css gère .open) */
+@media (max-width: 960px){
+  .layout{
+    grid-template-columns: 1fr;
+  }
+
+  /* on laisse la sidebar en position fixed (déjà fait dans Sidebar.css) */
+  .main-content{
+    padding-top: 72px; /* espace pour le bouton ☰ fixed */
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}

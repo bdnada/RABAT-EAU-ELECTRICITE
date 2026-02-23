@@ -1,0 +1,630 @@
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:iconsax/iconsax.dart';
+
+import '../services/api_service.dart';
+import 'tournee_screen.dart';
+import 'login_screen.dart';
+
+class PinLoginScreen extends StatefulWidget {
+  const PinLoginScreen({Key? key}) : super(key: key);
+
+  @override
+  State<PinLoginScreen> createState() => _PinLoginScreenState();
+}
+
+class _PinLoginScreenState extends State<PinLoginScreen> {
+  final ApiService apiService = ApiService();
+  final TextEditingController _phoneController = TextEditingController();
+
+  final List<TextEditingController> _pinControllers =
+      List.generate(6, (_) => TextEditingController());
+  final List<FocusNode> _pinFocusNodes = List.generate(6, (_) => FocusNode());
+
+  bool _loading = false;
+  bool _obscurePin = true;
+
+  final Color primary = const Color(0xFF27B0F5);
+  final Color secondary = const Color(0xFFA1A7AB);
+
+  static const String _kPinFailed = 'pin_failed_attempts';
+  static const String _kPinLocked = 'pin_locked';
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPinLockedOnStart();
+  }
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    for (final c in _pinControllers) {
+      c.dispose();
+    }
+    for (final f in _pinFocusNodes) {
+      f.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _showProDialog({
+    required String title,
+    required String message,
+    bool isError = true,
+    VoidCallback? onOk,
+  }) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 22),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x22000000),
+                  blurRadius: 22,
+                  offset: Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: isError ? const Color(0xFFFFF2F2) : const Color(0xFFF2FFF7),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    isError ? Iconsax.warning_2 : Iconsax.tick_circle,
+                    color: isError ? const Color(0xFFE53935) : const Color(0xFF2E7D32),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: GoogleFonts.poppins(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        message,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: const Color(0xFF64748B),
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            if (onOk != null) onOk();
+                          },
+                          child: Text(
+                            "OK",
+                            style: GoogleFonts.poppins(
+                              color: primary,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      )
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _checkPinLockedOnStart() async {
+    final prefs = await SharedPreferences.getInstance();
+    final locked = prefs.getBool(_kPinLocked) ?? false;
+
+    if (locked && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await _showProDialog(
+          title: "Accès PIN bloqué",
+          message: "Connectez-vous avec Login puis déconnectez-vous pour réactiver le PIN.",
+          isError: true,
+          onOk: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+            );
+          },
+        );
+      });
+    }
+  }
+
+  String _getPinValue() => _pinControllers.map((c) => c.text.trim()).join();
+
+  void _clearPin() {
+    for (final c in _pinControllers) {
+      c.clear();
+    }
+    _pinFocusNodes.first.requestFocus();
+  }
+
+  Future<void> _recordFailedAttemptAndMaybeLock() async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getInt(_kPinFailed) ?? 0;
+    final next = current + 1;
+
+    if (next >= 3) {
+      await prefs.setBool(_kPinLocked, true);
+      await prefs.setInt(_kPinFailed, 0);
+
+      if (!mounted) return;
+      await _showProDialog(
+        title: "Trop de tentatives",
+        message: "Accès PIN bloqué. Connectez-vous avec Login puis déconnectez-vous.",
+        isError: true,
+        onOk: () {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+          );
+        },
+      );
+      return;
+    }
+
+    await prefs.setInt(_kPinFailed, next);
+    if (!mounted) return;
+
+    await _showProDialog(
+      title: "PIN incorrect",
+      message: "Tentatives restantes : ${3 - next}",
+      isError: true,
+    );
+  }
+
+  Future<void> _resetFailedAttempts() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kPinFailed, 0);
+  }
+
+  Future<void> _loginWithPin() async {
+    final phone = _phoneController.text.trim();
+    final pin = _getPinValue();
+
+    if (phone.isEmpty || pin.isEmpty) {
+      await _showProDialog(
+        title: "Champs requis",
+        message: "Veuillez renseigner le téléphone et le code PIN.",
+        isError: true,
+      );
+      return;
+    }
+    if (!RegExp(r'^\d{6}$').hasMatch(pin)) {
+      await _showProDialog(
+        title: "Code invalide",
+        message: "Le code PIN doit contenir 6 chiffres.",
+        isError: true,
+      );
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final locked = prefs.getBool(_kPinLocked) ?? false;
+    if (locked) {
+      if (!mounted) return;
+      await _showProDialog(
+        title: "Accès PIN bloqué",
+        message: "Connectez-vous avec Login puis déconnectez-vous pour réactiver le PIN.",
+        isError: true,
+        onOk: () {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+          );
+        },
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      await apiService.loginWithPin(phone, pin);
+      await _resetFailedAttempts();
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const TourneeScreen()),
+      );
+    } catch (_) {
+      await _recordFailedAttemptAndMaybeLock();
+      _clearPin();
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // ✅ IMPORTANT: on scroll + padding = viewInsets.bottom pour éviter overflow
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      backgroundColor: const Color(0xFFF6F7FB),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    primary.withOpacity(0.14),
+                    secondary.withOpacity(0.10),
+                    Colors.white,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: -90,
+            right: -70,
+            child: Container(
+              width: 220,
+              height: 220,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primary.withOpacity(0.18),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -110,
+            left: -80,
+            child: Container(
+              width: 260,
+              height: 260,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: secondary.withOpacity(0.18),
+              ),
+            ),
+          ),
+
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(18, 10, 18, 18 + bottomInset),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: IntrinsicHeight(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Iconsax.arrow_left_2, color: Color(0xFF0F172A)),
+                          ),
+                          const SizedBox(height: 6),
+
+                          Center(
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 84,
+                                  height: 84,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(22),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.06),
+                                        blurRadius: 18,
+                                        offset: const Offset(0, 10),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(22),
+                                    child: Image.asset('assets/logo.png', fit: BoxFit.contain),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  "Connexion par PIN",
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF0F172A),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "Accès rapide et sécurisé",
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 22),
+                          const Spacer(),
+
+                          _buildCard(),
+
+                          const SizedBox(height: 10),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.black.withOpacity(0.06)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Téléphone", style: _labelStyle()),
+          const SizedBox(height: 8),
+          _proField(
+            controller: _phoneController,
+            hint: "06 12 34 56 78",
+            keyboardType: TextInputType.phone,
+            prefixIcon: Iconsax.call,
+          ),
+          const SizedBox(height: 14),
+
+          Row(
+            children: [
+              Expanded(child: Text("Code PIN", style: _labelStyle())),
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setState(() => _obscurePin = !_obscurePin),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _obscurePin ? Iconsax.eye_slash : Iconsax.eye,
+                        size: 18,
+                        color: Colors.grey.shade700,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _obscurePin ? "Afficher" : "Masquer",
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          _pinBoxes(),
+
+          const SizedBox(height: 18),
+          _buildLoginButton(),
+
+          const SizedBox(height: 14),
+          Center(child: _buildLoginWithPasswordLink()),
+        ],
+      ),
+    );
+  }
+
+  TextStyle _labelStyle() {
+    return GoogleFonts.poppins(
+      fontSize: 12.5,
+      fontWeight: FontWeight.w700,
+      color: const Color(0xFF0F172A),
+    );
+  }
+
+  Widget _proField({
+    required TextEditingController controller,
+    required String hint,
+    required TextInputType keyboardType,
+    required IconData prefixIcon,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        style: GoogleFonts.poppins(
+          color: const Color(0xFF0F172A),
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        decoration: InputDecoration(
+          prefixIcon: Icon(prefixIcon, color: primary, size: 20),
+          border: InputBorder.none,
+          hintText: hint,
+          hintStyle: GoogleFonts.poppins(
+            color: const Color(0xFF94A3B8),
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        ),
+      ),
+    );
+  }
+
+  Widget _pinBoxes() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: List.generate(6, (i) => _pinBoxItem(i)),
+    );
+  }
+
+  Widget _pinBoxItem(int index) {
+    return Container(
+      width: 46,
+      height: 52,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: TextField(
+        controller: _pinControllers[index],
+        focusNode: _pinFocusNodes[index],
+        keyboardType: TextInputType.number,
+        textAlign: TextAlign.center,
+        maxLength: 1,
+        obscureText: _obscurePin,
+        style: GoogleFonts.poppins(
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          color: const Color(0xFF0F172A),
+        ),
+        decoration: const InputDecoration(
+          counterText: "",
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+        ),
+        onChanged: (value) {
+          final v = value.trim();
+          if (v.length > 1) {
+            _pinControllers[index].text = v.substring(0, 1);
+            _pinControllers[index].selection = const TextSelection.collapsed(offset: 1);
+          }
+
+          if (v.isNotEmpty) {
+            if (index < 5) {
+              _pinFocusNodes[index + 1].requestFocus();
+            } else {
+              FocusScope.of(context).unfocus();
+            }
+          } else {
+            if (index > 0) _pinFocusNodes[index - 1].requestFocus();
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildLoginButton() {
+    if (_loading) {
+      return SizedBox(
+        height: 52,
+        child: Center(child: CircularProgressIndicator(color: primary)),
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton(
+        onPressed: _loginWithPin,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        child: Text(
+          "Se connecter",
+          style: GoogleFonts.poppins(
+            fontSize: 14.5,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoginWithPasswordLink() {
+    return GestureDetector(
+      onTap: () {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      },
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Iconsax.login_1, size: 18, color: primary),
+          const SizedBox(width: 8),
+          Text(
+            "Se connecter avec login",
+            style: GoogleFonts.poppins(
+              color: const Color(0xFF0F172A),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Icon(Iconsax.arrow_right_3, size: 16, color: Colors.grey.shade600),
+        ],
+      ),
+    );
+  }
+}
