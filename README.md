@@ -9,4 +9,4 @@ Application web pour la gestion de l’eau et de l’électricité.
 ![login agent](screens/login agent.jpeg)
 
 ### Dashboard
-![dashboard](screenss/Dashboard.jpeg)
+![dashboard](screens/Dashboard.jpeg)
