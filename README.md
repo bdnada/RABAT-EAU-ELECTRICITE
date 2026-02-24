@@ -5,7 +5,7 @@ Application web pour la gestion de l’eau et de l’électricité.
 ## Captures d’écran
 
 ### Pages de login
-![login](screens/page_Login.jpeg)
+![login](screens/page_Login.png)
 ![login agent](screens/login_agent.jpeg)
 
 ### Dashboard
